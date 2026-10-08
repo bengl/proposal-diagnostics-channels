@@ -10,7 +10,7 @@ Every server-side JavaScript runtime now ships a diagnostics-channel-style pub/s
 
 - Node: `node:diagnostics_channel` is stable. `TracingChannel` is still experimental even there.
 - Bun, Deno, Cloudflare Workers: Node-compatible implementations. A probe suite across all four lives in this repo's [divergence matrix](divergence-matrix/), with strict assertions for event order, context identity, and store restoration. The core converges. Error handling and a few metadata shapes do not.
-- TC39: `AsyncContext` (Stage 2) standardizes context propagation, the store subscribers bind to. It does not define an event surface.
+- TC39: [`AsyncContext`](https://github.com/tc39/proposal-async-context) (Stage 2) standardizes context propagation, the store subscribers bind to. It does not define an event surface.
 - W3C: Trace Context and Baggage standardize wire headers, not in-process instrumentation.
 - No standards body has the channel surface on its work list, per TC55's current work items and public meeting notes as of October 2026.
 
@@ -36,7 +36,7 @@ Layered on top, in order:
 
 ## Why now
 
-The Fetch Server proposal is the first TC55 work item with an instrumentation requirement it cannot express on its own (see its issue #7). Handlers get wrapped for tracing today via global patching and module hooks, both accidents of the platform. Server-exchange channels would be the first well-known names with a live customer.
+The [Fetch Server proposal](https://github.com/jasnell/proposal-fetch-server) is the first TC55 work item with an instrumentation requirement it cannot express on its own (see [its issue #7](https://github.com/jasnell/proposal-fetch-server/issues/7)). Handlers get wrapped for tracing today via global patching and module hooks, both accidents of the platform. Server-exchange channels would be the first well-known names with a live customer.
 
 ## The ask
 
