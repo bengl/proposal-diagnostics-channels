@@ -30,6 +30,8 @@ Conformance {#conformance}
 
 A conforming implementation provides a <dfn>diagnostics channel module</dfn>, a module whose exported members are as defined in [[#module]] and whose behavior is as specified in [[#operations]]. The module's specifier is implementation-defined. This specification does not standardize the `node:` prefix. A runtime's `node:diagnostics_channel` is a conforming instance to the extent its behavior matches this specification.
 
+Earlier TC55 proposals have treated module placement as transitional, imagining a final standard that exposes a global or a binding object instead. The [Sockets API proposal](https://sockets-api.proposal.wintertc.org) is one example. This draft takes the opposite position. The module is the shape every major runtime already ships and every consumer already imports. A standard placement that nobody uses would itself be the transitional artifact. The specifier stays implementation-defined so that existing modules, `node:diagnostics_channel` among them, remain conforming instances, and whether TC55 standardizes a specifier is an open question ([[#open-questions]]).
+
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 [[!RFC2119]] [[!RFC8179]] when, and only when, they appear in all capitals, as shown here.
 
 A conforming implementation MAY provide extensions, such as additional exports, that do not contradict anything this specification defines.
