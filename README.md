@@ -1,4 +1,4 @@
-# Diagnostics Channels: a one-pager for TC55
+# Diagnostics Channels
 
 Status: exploratory pre-proposal. Not yet a TC55 work item.
 
