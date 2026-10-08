@@ -31,15 +31,8 @@ Layered on top, in order:
 ## Hard problems to answer before adoption
 
 - **Isolation.** Channels cross trust boundaries. Workers already forwards messages through structured clone for safety in multi-tenant isolates. The spec needs explicit realm and agent scoping and a rule for what untrusted code may subscribe to.
-- **Divergence.** Nobody has catalogued where the four runtimes differ. A test matrix is both the problem statement and the forcing function.
 - **Node's stake.** Node's API becomes the standard and its still-experimental TracingChannel gets pressure to stabilize. That is the pitch, not the objection.
 
 ## Why now
 
 The [Fetch Server proposal](https://github.com/jasnell/proposal-fetch-server) is the first TC55 work item with an instrumentation requirement it cannot express on its own (see [its issue #7](https://github.com/jasnell/proposal-fetch-server/issues/7)). Handlers get wrapped for tracing today via global patching and module hooks, both accidents of the platform. Server-exchange channels would be the first well-known names with a live customer.
-
-## The ask
-
-1. Two runtimes co-sign this page. Cloudflare and Node are the natural first pair.
-2. A divergence test matrix across Node, Deno, Bun, and Workers. A first pass is in this repo, see `divergence-matrix/`.
-3. A proposal repo under the WinterTC55 org and an agenda slot.
