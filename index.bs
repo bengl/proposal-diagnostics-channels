@@ -39,71 +39,86 @@ The diagnostics channel module {#module}
 
 The module exports the following members:
 
-| Member | Signature |
-|--------|-----------|
-| `channel(name)` | `Channel channel((DOMString or symbol) name)` |
-| `subscribe(name, onMessage)` | `undefined subscribe((DOMString or symbol) name, Function onMessage)` |
-| `unsubscribe(name, onMessage)` | `boolean unsubscribe((DOMString or symbol) name, Function onMessage)` |
-| `hasSubscribers(name)` | `boolean hasSubscribers((DOMString or symbol) name)` |
+<table class="data">
+  <thead>
+    <tr><th>Member</th><th>Signature</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>channel(name)</code></td><td><code>Channel channel((DOMString or symbol) name)</code></td></tr>
+    <tr><td><code>subscribe(name, onMessage)</code></td><td><code>undefined subscribe((DOMString or symbol) name, Function onMessage)</code></td></tr>
+    <tr><td><code>unsubscribe(name, onMessage)</code></td><td><code>boolean unsubscribe((DOMString or symbol) name, Function onMessage)</code></td></tr>
+    <tr><td><code>hasSubscribers(name)</code></td><td><code>boolean hasSubscribers((DOMString or symbol) name)</code></td></tr>
+  </tbody>
+</table>
 
 <div class="note">
 The signatures use Web IDL notation for precision, but they are not Web IDL definitions. This specification does not define IDL interfaces for the module surface, and it does not require the module to be exposed as a Web IDL namespace or global.
 </div>
 
 The Channel object {#channel-object}
------------------------------------
+------------------------------------
 
 A <dfn>Channel</dfn> is an object, supplied by the implementation, with the following members:
 
-| Member | Kind | Value |
-|--------|------|-------|
-| `name` | read-only data property | The channel's name, a String or Symbol |
-| `hasSubscribers` | read-only data property | `true` if the [=subscriber list=] is non-empty, otherwise `false` |
-| `subscribe(onMessage)` | method | The same operation as the module-level `subscribe()` |
-| `unsubscribe(onMessage)` | method | The same operation as the module-level `unsubscribe()` |
-| `publish(message)` | method | Publishes |message| to the channel ([[#op-publish]]) |
+<table class="data">
+  <thead>
+    <tr><th>Member</th><th>Kind</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>name</code></td><td>read-only data property</td><td>The channel's name, a String or Symbol</td></tr>
+    <tr><td><code>hasSubscribers</code></td><td>read-only data property</td><td><code>true</code> if the [=subscriber list=] is non-empty, otherwise <code>false</code></td></tr>
+    <tr><td><code>subscribe(onMessage)</code></td><td>method</td><td>The same operation as the module-level <code>subscribe()</code></td></tr>
+    <tr><td><code>unsubscribe(onMessage)</code></td><td>method</td><td>The same operation as the module-level <code>unsubscribe()</code></td></tr>
+    <tr><td><code>publish(message)</code></td><td>method</td><td>Publishes <var>message</var> to the channel ([[#op-publish]])</td></tr>
+  </tbody>
+</table>
 
-Each distinct name has at most one Channel. The `channel(name)` function returns the same object on every call with the same name.
+Each distinct name has at most one Channel. The <code>channel(name)</code> function returns the same object on every call with the same name.
 
 Operations {#operations}
-=======================
+========================
 
 To <dfn>resolve a channel</dfn> given |name|: return the Channel for |name|, creating one if none exists.
 
 A <dfn>subscriber list</dfn> is an ordered list of functions. New subscribers are appended. The order of the list is its <dfn>subscription order</dfn>.
 
-## The channel(name) function {#op-channel}
+The channel(name) function {#op-channel}
+---------------------------------------
 
 1. If |name| is neither a String nor a Symbol, throw a `TypeError`.
-1. [=Resolve a channel=] given |name|, and return it.
+2. [=Resolve a channel=] given |name|, and return it.
 
-## The subscribe(name, onMessage) function {#op-subscribe}
+The subscribe(name, onMessage) function {#op-subscribe}
+------------------------------------------------------
 
 1. If |name| is neither a String nor a Symbol, throw a `TypeError`.
-1. If |onMessage| is not callable, throw a `TypeError`.
-1. [=Resolve a channel=] given |name|.
-1. If |onMessage| is already in the [=subscriber list=], do nothing and return `undefined`.
-1. Append |onMessage| to the end of the [=subscriber list=], and return `undefined`.
+2. If |onMessage| is not callable, throw a `TypeError`.
+3. [=Resolve a channel=] given |name|.
+4. If |onMessage| is already in the [=subscriber list=], do nothing and return `undefined`.
+5. Append |onMessage| to the end of the [=subscriber list=], and return `undefined`.
 
-## The unsubscribe(name, onMessage) function {#op-unsubscribe}
-
-1. [=Resolve a channel=] given |name|.
-1. If |onMessage| is in the [=subscriber list=], remove it and return `true`.
-1. Return `false`.
-
-## The hasSubscribers(name) function {#op-hassubscribers}
+The unsubscribe(name, onMessage) function {#op-unsubscribe}
+-----------------------------------------------------------
 
 1. [=Resolve a channel=] given |name|.
-1. Return `true` if the [=subscriber list=] is non-empty, otherwise `false`.
+2. If |onMessage| is in the [=subscriber list=], remove it and return `true`.
+3. Return `false`.
+
+The hasSubscribers(name) function {#op-hassubscribers}
+-------------------------------------------------------
+
+1. [=Resolve a channel=] given |name|.
+2. Return `true` if the [=subscriber list=] is non-empty, otherwise `false`.
 
 The `hasSubscribers()` function exists so that emitters can avoid constructing expensive diagnostic payloads when nobody is listening. A channel that has no subscribers MUST NOT cause user code to run when published to.
 
-## The publish(message) method {#op-publish}
+The publish(message) method {#op-publish}
+-----------------------------------------
 
 1. Let |channel| be the [=Channel=] this method was called on.
-1. If |channel|'s [=subscriber list=] is empty, return `undefined` without further action. The message is not inspected and no user code runs.
-1. For each |subscriber| in |channel|'s [=subscriber list=], in [=subscription order=]: invoke |subscriber| with |message| as the first argument and |channel|'s name as the second argument. Each invocation completes, including all of its synchronous side effects, before the next begins.
-1. Return `undefined`.
+2. If |channel|'s [=subscriber list=] is empty, return `undefined` without further action. The message is not inspected and no user code runs.
+3. For each |subscriber| in |channel|'s [=subscriber list=], in [=subscription order=]: invoke |subscriber| with |message| as the first argument and |channel|'s name as the second argument. Each invocation completes, including all of its synchronous side effects, before the next begins.
+4. Return `undefined`.
 
 Publishing is synchronous: when `publish()` returns, every subscriber that is invoked by it has completed. This document does not define what happens if a subscriber throws ([[#open-questions]]).
 
