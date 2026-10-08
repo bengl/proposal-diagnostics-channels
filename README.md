@@ -9,7 +9,7 @@ Every server-side JavaScript runtime now ships a diagnostics-channel-style pub/s
 ## What exists and what's missing
 
 - Node: `node:diagnostics_channel` is stable. `TracingChannel` is still experimental even there.
-- Bun, Deno, Cloudflare Workers: Node-compatible implementations, with per-runtime divergences nobody has catalogued.
+- Bun, Deno, Cloudflare Workers: Node-compatible implementations. A first-pass probe across all four lives in this repo's [divergence matrix](divergence-matrix/). The core converges, including the tracing lifecycle and store binding. Error handling and a few metadata shapes do not.
 - TC39: `AsyncContext` (Stage 2) standardizes context propagation, the store subscribers bind to. It does not define an event surface.
 - W3C: Trace Context and Baggage standardize wire headers, not in-process instrumentation.
 - No standards body has the channel surface on its work list, per TC55's current work items and public meeting notes as of October 2026.
@@ -41,5 +41,5 @@ The Fetch Server proposal is the first TC55 work item with an instrumentation re
 ## The ask
 
 1. Two runtimes co-sign this page. Cloudflare and Node are the natural first pair.
-2. A divergence test matrix across Node, Deno, Bun, and Workers.
+2. A divergence test matrix across Node, Deno, Bun, and Workers. A first pass is in this repo, see `divergence-matrix/`.
 3. A proposal repo under the WinterTC55 org and an agenda slot.

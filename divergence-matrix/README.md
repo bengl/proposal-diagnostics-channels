@@ -9,10 +9,8 @@ Goal: catalogue where diagnostics-channel implementations differ across Node, De
 How to run:
 
 ```
-node tests/cli.mjs
-bun tests/cli.mjs
-deno run -A tests/cli.mjs
-npx wrangler dev --port 8791 & curl localhost:8791/
+./run-all.sh            # node, bun, deno
+npx wrangler dev --port 8791 & curl localhost:8791/   # workers
 ```
 
 Raw output for the tested versions lives in `results/`.
@@ -22,6 +20,7 @@ Raw output for the tested versions lives in `results/`.
 | Runtime | Version | How |
 |---------|---------|-----|
 | Node | v26.5.0 | `node tests/cli.mjs` |
+| Node | v22.23.1 and v24.18.0, spot check | same behavior, all probes pass |
 | Deno | 2.9.7 | `deno run -A tests/cli.mjs` |
 | Bun | 1.3.14 | `bun tests/cli.mjs` |
 | Workers | wrangler 4.148.0, local workerd | `wrangler dev`, `nodejs_compat`, compat date 2026-09-01 |
@@ -51,9 +50,9 @@ The Workers results come from the local workerd binary. Deployed Workers should 
 
 **Subscriber error handling is the big divergence, with three distinct behaviors.**
 
-* Node and Bun: `publish` returns normally, the remaining subscribers still run, and the error surfaces later as an uncaught exception. A handler registered after the publish still receives it.
-* Deno: `publish` returns normally and the remaining subscribers run, but the error only reaches an `uncaughtException` handler that was registered before the publish. Otherwise it disappears entirely. No crash, no report at exit.
-* Workers: `publish` throws synchronously and the remaining subscribers do not run.
+* Node and Bun: `publish` returns normally, the remaining subscribers still run, and the error surfaces later as an uncaught exception. A handler registered after the publish still receives it. Node documents the mechanism, though not that dispatch continues: "errors thrown in the message handler will trigger an `'uncaughtException'`" ([Node docs](https://nodejs.org/docs/latest/api/diagnostics_channel.html)). Verified identical on Node v22.23.1 and v24.18.0.
+* Deno 2.9.7: `publish` returns normally and the remaining subscribers run, but the error only reaches an `uncaughtException` handler that was registered before the publish. Otherwise it disappears entirely. No crash, no report at exit. Not documented. Pinned to this version.
+* Workers: `publish` throws synchronously and the remaining subscribers do not run. Not documented.
 
 None of this is documented by any of the four. Any instrumentation library that can throw or that depends on later subscribers seeing the message after a bad one has to know which runtime it is on. This is the clearest argument for the spec.
 
@@ -63,5 +62,5 @@ None of this is documented by any of the four. Any instrumentation library that 
 
 ## Not probed by the suite
 
-* **Isolation.** What untrusted code can subscribe to, and any cross-isolate forwarding. Workers forwards some built-in channels to Tail Workers through structured clone, per Cloudflare's docs, and the other runtimes have no equivalent surface. Needs a manual audit and probably a per-runtime threat model.
+* **Isolation.** What untrusted code can subscribe to, and any cross-isolate forwarding. Workers forwards some built-in channels to Tail Workers through structured clone, per [Cloudflare's docs](https://developers.cloudflare.com/workers/runtime-apis/nodejs/diagnostics-channel/), and the other runtimes have no equivalent surface. Needs a manual audit and probably a per-runtime threat model.
 * **Built-in channels.** The inventory of channels each runtime publishes itself, and their message shapes. Nothing in the API exposes this, so it has to be audited from docs and source.
