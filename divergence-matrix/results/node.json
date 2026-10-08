@@ -30,7 +30,7 @@
     {
       "id": "subscriber-error",
       "ok": true,
-      "note": "publish threw synchronously: before=false after=false, second subscriber ran: before=true after=true, deferred uncaught delivered: [\"boom\",\"boom\"]"
+      "note": "publish threw synchronously: before=false after=false, second subscriber ran: before=true after=true, deferred uncaught delivered: [\"before-boom\",\"after-boom\"]"
     },
     {
       "id": "tracingchannel-surface",
@@ -45,7 +45,7 @@
     {
       "id": "trace-promise-reject",
       "ok": true,
-      "note": "events: start,end,error,asyncStart,asyncEnd, rejected: true, ctx.error: boom"
+      "note": "events: start,end,error,asyncStart,asyncEnd, same ctx across events: true, rejected: true, ctx.error: boom"
     },
     {
       "id": "trace-callback",

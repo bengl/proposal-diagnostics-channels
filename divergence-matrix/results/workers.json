@@ -45,7 +45,7 @@
         {
             "id": "trace-promise-reject",
             "ok": true,
-            "note": "events: start,end,error,asyncStart,asyncEnd, rejected: true, ctx.error: boom"
+            "note": "events: start,end,error,asyncStart,asyncEnd, same ctx across events: true, rejected: true, ctx.error: boom"
         },
         {
             "id": "trace-callback",

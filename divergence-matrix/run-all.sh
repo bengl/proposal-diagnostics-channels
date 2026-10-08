@@ -11,8 +11,12 @@ echo "node done"
 bun tests/cli.mjs > divergence-matrix/results/bun.json
 echo "bun done"
 
+DENO="$HOME/.deno/bin/deno"
 if command -v deno >/dev/null 2>&1; then
   deno run -A tests/cli.mjs > divergence-matrix/results/deno.json
+  echo "deno done"
+elif [ -x "$DENO" ]; then
+  "$DENO" run -A tests/cli.mjs > divergence-matrix/results/deno.json
   echo "deno done"
 else
   echo "deno not found, skipped"

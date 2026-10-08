@@ -93,19 +93,20 @@ export async function run() {
   });
 
   await guard('subscriber-error', async () => {
-    const make = (name) => {
+    const make = (name, message) => {
       const ch = diagnostics_channel.channel(name);
       const hits = [];
-      const thrower = () => { throw new Error('boom'); };
+      const thrower = () => { throw new Error(message); };
       const second = () => hits.push(2);
       ch.subscribe(thrower);
       ch.subscribe(second);
       return { ch, hits, thrower, second };
     };
     // One subscriber error happens before any listener is registered, one
-    // after, so the probe observes both delivery cases.
-    const before = make('p:err-before');
-    const after = make('p:err-after');
+    // after, with distinct messages so the delivered errors are
+    // attributable.
+    const before = make('p:err-before', 'before-boom');
+    const after = make('p:err-after', 'after-boom');
 
     let syncThrowBefore = false;
     try {
@@ -155,7 +156,8 @@ export async function run() {
     const threw = syncThrowBefore || syncThrowAfter;
     const dispatched = secondRanBefore && secondRanAfter;
     rec('subscriber-error',
-      !threw && dispatched && listenerOk && deferred.length === 2,
+      !threw && dispatched && listenerOk
+        && deferred.includes('before-boom') && deferred.includes('after-boom'),
       'publish threw synchronously: before=' + syncThrowBefore + ' after=' + syncThrowAfter
         + ', second subscriber ran: before=' + secondRanBefore + ' after=' + secondRanAfter
         + ', deferred uncaught delivered: ' + JSON.stringify(deferred)
@@ -219,25 +221,30 @@ export async function run() {
     }
     const tc = diagnostics_channel.tracingChannel('p:tcr');
     const events = [];
+    const ctxs = [];
+    const ctx = {};
     let errMsg = '';
     const handlers = {
-      start() { events.push('start'); },
-      end() { events.push('end'); },
-      asyncStart() { events.push('asyncStart'); },
-      asyncEnd() { events.push('asyncEnd'); },
-      error(c) { events.push('error'); errMsg = (c && c.error && c.error.message) || ''; },
+      start(c) { events.push('start'); ctxs.push(c); },
+      end(c) { events.push('end'); ctxs.push(c); },
+      asyncStart(c) { events.push('asyncStart'); ctxs.push(c); },
+      asyncEnd(c) { events.push('asyncEnd'); ctxs.push(c); },
+      error(c) { events.push('error'); ctxs.push(c); errMsg = (c && c.error && c.error.message) || ''; },
     };
     tc.subscribe(handlers);
     let rejected = false;
     try {
-      await tc.tracePromise(async () => { throw new Error('boom'); }, {});
+      await tc.tracePromise(async () => { throw new Error('boom'); }, ctx);
     } catch {
       rejected = true;
     }
     tc.unsubscribe(handlers);
+    const sameCtx = ctxs.length === 5 && ctxs.every((c) => c === ctx);
     rec('trace-promise-reject',
-      rejected && events.includes('error') && errMsg === 'boom',
-      'events: ' + events.join(',') + ', rejected: ' + rejected + ', ctx.error: ' + errMsg);
+      rejected && events.join(',') === 'start,end,error,asyncStart,asyncEnd'
+        && sameCtx && errMsg === 'boom',
+      'events: ' + events.join(',') + ', same ctx across events: ' + sameCtx
+        + ', rejected: ' + rejected + ', ctx.error: ' + errMsg);
   });
 
   await guard('trace-callback', async () => {
