@@ -4,23 +4,25 @@ Goal: catalogue where diagnostics-channel implementations differ across Node, De
 
 ## Method
 
-`tests/probe.mjs` runs the same battery everywhere through each runtime's diagnostics channel module and returns the results as JSON. `tests/cli.mjs` prints them for Node, Bun, and Deno. `worker/index.mjs` serves them over HTTP under Workers. Node's docs are the reference behavior where all four agree, and any point where they don't is a row worth having.
+`tests/probe.mjs` runs the same battery everywhere through each runtime's diagnostics channel module and returns the results as JSON. `tests/cli.mjs` prints them for Node, Bun, and Deno. `worker/index.mjs` serves them over HTTP under Workers. The probe asserts Node's behavior as the reference, so a fail means a divergence from Node, not necessarily a bug. Any point where the runtimes disagree is a row worth having.
 
-How to run:
+How to run, from the repo root:
 
 ```
-./run-all.sh            # node, bun, deno
-npx wrangler dev --port 8791 & curl localhost:8791/   # workers
+./divergence-matrix/run-all.sh    # node, bun, deno
+# workers: capture the version, start wrangler, curl the worker
+npx wrangler --version > divergence-matrix/results/workers-env.txt
+npx wrangler dev --port 8791 & curl localhost:8791/ > divergence-matrix/results/workers.json
 ```
 
-Raw output for the tested versions lives in `results/`.
+Raw output for the tested versions lives in `results/`, including the two older Node runs. The Workers engine version is retained separately in `results/workers-env.txt`, since the worker cannot see its own host version.
 
 ## Environment
 
 | Runtime | Version | How |
 |---------|---------|-----|
 | Node | v26.5.0 | `node tests/cli.mjs` |
-| Node | v22.23.1 and v24.18.0, spot check | same behavior, all probes pass |
+| Node | v22.23.1, v24.18.0 | full runs, `results/node-v22.json` and `results/node-v24.json` |
 | Deno | 2.9.7 | `deno run -A tests/cli.mjs` |
 | Bun | 1.3.14 | `bun tests/cli.mjs` |
 | Workers | wrangler 4.148.0, local workerd | `wrangler dev`, `nodejs_compat`, compat date 2026-09-01 |
@@ -29,36 +31,40 @@ The Workers results come from the local workerd binary. Deployed Workers should 
 
 ## Results
 
-| Probe | Node 26.5.0 | Deno 2.9.7 | Bun 1.3.14 | Workers |
-|-------|-------------|-------------|------------|---------|
+The probe asserts exact event order, one shared context object across all events, the resolved value on the context, removal that actually stops delivery, bounded callback tracing, and store restoration against a pre-existing outer store. A pass under those assertions is a strong claim.
+
+| Probe | Node 26.5.0 (and 22, 24) | Deno 2.9.7 | Bun 1.3.14 | Workers |
+|-------|--------------------------|------------|-------------|---------|
 | Module surface (`channel`, `subscribe`, `unsubscribe`, `hasSubscribers`) | pass | pass | pass | pass |
 | Node-only exports (`BoundedChannel`, `boundedChannel`) | present | absent | absent | absent |
-| Channel singleton per name, `subscribe`/`publish`/`unsubscribe` on it | pass | pass | pass | pass, no `name` property |
-| String names: subscribe, publish, `hasSubscribers` toggles, unsubscribe | pass | pass | pass | pass, `unsubscribe` returns `undefined` |
-| Symbol names | pass | pass | pass | pass |
+| Channel singleton per name, `subscribe`/`publish`/`unsubscribe` on it | pass | pass | pass | fail: no `name` property, singleton and methods fine |
+| String names: subscribe, publish, unsubscribe stops delivery, `hasSubscribers` toggles | pass | pass | pass | fail: `unsubscribe` returns `undefined`, removal itself works |
+| Symbol names, name delivered is the supplied symbol | pass | pass | pass | pass |
 | Subscriber dispatch order | registration order | registration order | registration order | registration order |
-| Subscriber error handling | see findings | see findings | see findings | see findings |
+| Subscriber error handling | pass, both errors delivered | fail: see findings | pass, both errors delivered | fail: see findings |
 | `TracingChannel` surface, five events, `subscribe` helper | pass | pass | pass | pass, subchannels expose no `name` |
-| `tracePromise` | pass | pass | pass | pass |
+| `tracePromise`: exact event order, one ctx, result on ctx | pass | pass | pass | pass |
 | `tracePromise` rejection, `error` event, `ctx.error` | pass | pass | pass | pass |
-| `traceCallback` | pass | pass | pass | pass |
-| `traceSync` | pass | pass | pass | pass |
+| `traceCallback`: exact event order, one ctx, bounded | pass | pass | pass | pass |
+| `traceSync`: exact event order, one ctx | pass | pass | pass | pass |
 | `bindStore` / `runStores` with `AsyncLocalStorage` | pass | pass | pass | pass |
-| TracingChannel store restore across `asyncStart` | pass | pass | pass | pass |
+| TracingChannel store restore against an outer store | pass | pass | pass | pass |
 
 ## Findings
 
 **Subscriber error handling is the big divergence, with three distinct behaviors.**
 
-* Node and Bun: `publish` returns normally, the remaining subscribers still run, and the error surfaces later as an uncaught exception. A handler registered after the publish still receives it. Node documents the mechanism, though not that dispatch continues: "errors thrown in the message handler will trigger an `'uncaughtException'`" ([Node docs](https://nodejs.org/docs/latest/api/diagnostics_channel.html)). Verified identical on Node v22.23.1 and v24.18.0.
-* Deno 2.9.7: `publish` returns normally and the remaining subscribers run, but the error only reaches an `uncaughtException` handler that was registered before the publish. Otherwise it disappears entirely. No crash, no report at exit. Not documented. Pinned to this version.
+The probe publishes two subscriber errors, one before any `uncaughtException` listener is registered and one after.
+
+* Node and Bun: `publish` returns normally, the remaining subscribers still run, and both errors surface later as uncaught exceptions, delivered to a listener registered between the two publishes. Identical on Node v22.23.1, v24.18.0, and v26.5.0. Node documents the mechanism, "errors thrown in the message handler will trigger an [`'uncaughtException'`](https://nodejs.org/docs/latest/api/diagnostics_channel.html)", but not that dispatch continues.
+* Deno 2.9.7: `publish` returns normally and the remaining subscribers run, but only the error published after the listener was registered is delivered. The error published with no listener registered disappears entirely: no crash, no delivery, no report at exit. Not documented.
 * Workers: `publish` throws synchronously and the remaining subscribers do not run. Not documented.
 
-None of this is documented by any of the four. Any instrumentation library that can throw or that depends on later subscribers seeing the message after a bad one has to know which runtime it is on. This is the clearest argument for the spec.
+Any instrumentation library that can throw, or that depends on later subscribers seeing the message after a bad one, has to know which runtime it is on. This is the clearest argument for the spec.
 
-**Workers has small metadata gaps.** `Channel.name` is `undefined`, the `TracingChannel` subchannels expose no `name`, and the module-level `unsubscribe()` returns `undefined` instead of `true`. Subscriptions themselves work, including `hasSubscribers` toggling correctly. These are exactly the kind of quiet shape differences a spec has to pin for portable tooling.
+**Workers has small metadata gaps.** `Channel.name` is `undefined`, the `TracingChannel` subchannels expose no `name`, and the module-level `unsubscribe()` returns `undefined` instead of `true`. Removal itself works: a publish after `unsubscribe` does not fire the handler, and `hasSubscribers` toggles correctly. These are exactly the kind of quiet shape differences a spec has to pin for portable tooling.
 
-**Everything else converges.** The five-event tracing lifecycle, the trace helpers, context identity across events, store binding, and store restore behave identically in all four runtimes, including the ALS integration. The core is already de facto standard. Error handling and metadata shape are what remain.
+**Everything else converges, under strict assertions.** Exact event order, one shared context object across events, the resolved value placed on the context, bounded callback tracing, and store restoration against a pre-existing outer store all behave identically in all four runtimes, including the `AsyncLocalStorage` integration. The core is already de facto standard. Error handling and metadata shape are what remain.
 
 ## Not probed by the suite
 

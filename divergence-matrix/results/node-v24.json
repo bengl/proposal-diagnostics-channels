@@ -1,0 +1,71 @@
+{
+  "runtime": "node",
+  "version": "v24.18.0",
+  "tests": [
+    {
+      "id": "module-surface",
+      "ok": true,
+      "note": "keys: Channel,channel,hasSubscribers,subscribe,tracingChannel,unsubscribe"
+    },
+    {
+      "id": "channel-singleton",
+      "ok": true,
+      "note": "{\"same\":true,\"name\":true,\"subscribe\":true,\"unsubscribe\":true,\"publish\":true}, name value: string, hasSubscribers type: boolean"
+    },
+    {
+      "id": "string-publish",
+      "ok": true,
+      "note": "fired: 1 (post-unsubscribe publish also fired: false), unsub returns: true, has after: false"
+    },
+    {
+      "id": "symbol-names",
+      "ok": true,
+      "note": "has: true, fired: 1 (post-unsubscribe publish also fired: false), name is the supplied symbol: true, channel(): object"
+    },
+    {
+      "id": "subscriber-order",
+      "ok": true,
+      "note": "order: 1,2"
+    },
+    {
+      "id": "subscriber-error",
+      "ok": true,
+      "note": "publish threw synchronously: before=false after=false, second subscriber ran: before=true after=true, deferred uncaught delivered: [\"boom\",\"boom\"]"
+    },
+    {
+      "id": "tracingchannel-surface",
+      "ok": true,
+      "note": "start=tracing:p:tc:start | end=tracing:p:tc:end | asyncStart=tracing:p:tc:asyncStart | asyncEnd=tracing:p:tc:asyncEnd | error=tracing:p:tc:error | traceSync=function,tracePromise=function,traceCallback=function"
+    },
+    {
+      "id": "trace-promise",
+      "ok": true,
+      "note": "events: start,end,asyncStart,asyncEnd, same ctx across events: true, ctx.result at end (type): object, at asyncEnd: 42, out: {\"v\":42}"
+    },
+    {
+      "id": "trace-promise-reject",
+      "ok": true,
+      "note": "events: start,end,error,asyncStart,asyncEnd, rejected: true, ctx.error: boom"
+    },
+    {
+      "id": "trace-callback",
+      "ok": true,
+      "note": "events: start,asyncStart,cb:42,asyncEnd,end, same ctx across events: true"
+    },
+    {
+      "id": "trace-sync",
+      "ok": true,
+      "note": "events: start,end, out: 7, same ctx across events: true"
+    },
+    {
+      "id": "bind-store-runstores",
+      "ok": true,
+      "note": "inside: {\"from\":{\"tag\":\"bs\"}}, after: undefined"
+    },
+    {
+      "id": "tracingchannel-restore",
+      "ok": true,
+      "note": "store inside start: tc, inside asyncStart: tc, store after trace: outer"
+    }
+  ]
+}

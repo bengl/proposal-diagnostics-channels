@@ -15,12 +15,12 @@
         {
             "id": "string-publish",
             "ok": false,
-            "note": "fired: 1, unsub returns: undefined, has after: false"
+            "note": "fired: 1 (post-unsubscribe publish also fired: false), unsub returns: undefined, has after: false"
         },
         {
             "id": "symbol-names",
             "ok": true,
-            "note": "has: true, fired: 1, channel(): object"
+            "note": "has: true, fired: 1 (post-unsubscribe publish also fired: false), name is the supplied symbol: true, channel(): object"
         },
         {
             "id": "subscriber-order",
@@ -30,7 +30,7 @@
         {
             "id": "subscriber-error",
             "ok": false,
-            "note": "publish threw synchronously: true, second subscriber ran: false, deferred uncaught: not observed"
+            "note": "publish threw synchronously: before=true after=true, second subscriber ran: before=false after=false, deferred uncaught delivered: []"
         },
         {
             "id": "tracingchannel-surface",
@@ -40,7 +40,7 @@
         {
             "id": "trace-promise",
             "ok": true,
-            "note": "events: start,end:undefined,asyncStart,asyncEnd, ctx identity: true, out: {\"v\":42}"
+            "note": "events: start,end,asyncStart,asyncEnd, same ctx across events: true, ctx.result at end (type): object, at asyncEnd: 42, out: {\"v\":42}"
         },
         {
             "id": "trace-promise-reject",
@@ -50,12 +50,12 @@
         {
             "id": "trace-callback",
             "ok": true,
-            "note": "events: start,asyncStart,cb:42,asyncEnd,end"
+            "note": "events: start,asyncStart,cb:42,asyncEnd,end, same ctx across events: true"
         },
         {
             "id": "trace-sync",
             "ok": true,
-            "note": "events: start,end, out: 7"
+            "note": "events: start,end, out: 7, same ctx across events: true"
         },
         {
             "id": "bind-store-runstores",
@@ -65,7 +65,7 @@
         {
             "id": "tracingchannel-restore",
             "ok": true,
-            "note": "start store: tc, asyncStart store: tc"
+            "note": "store inside start: tc, inside asyncStart: tc, store after trace: outer"
         }
     ]
 }

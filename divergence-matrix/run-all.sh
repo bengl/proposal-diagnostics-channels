@@ -18,4 +18,5 @@ else
   echo "deno not found, skipped"
 fi
 
-echo "workers: npx wrangler dev --port 8791 & then curl localhost:8791/ > divergence-matrix/results/workers.json"
+echo "workers: npx wrangler --version > divergence-matrix/results/workers-env.txt"
+echo "        npx wrangler dev --port 8791 & then curl localhost:8791/ > divergence-matrix/results/workers.json"

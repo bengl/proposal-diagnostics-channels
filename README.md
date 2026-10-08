@@ -9,7 +9,7 @@ Every server-side JavaScript runtime now ships a diagnostics-channel-style pub/s
 ## What exists and what's missing
 
 - Node: `node:diagnostics_channel` is stable. `TracingChannel` is still experimental even there.
-- Bun, Deno, Cloudflare Workers: Node-compatible implementations. A first-pass probe across all four lives in this repo's [divergence matrix](divergence-matrix/). The core converges, including the tracing lifecycle and store binding. Error handling and a few metadata shapes do not.
+- Bun, Deno, Cloudflare Workers: Node-compatible implementations. A probe suite across all four lives in this repo's [divergence matrix](divergence-matrix/), with strict assertions for event order, context identity, and store restoration. The core converges. Error handling and a few metadata shapes do not.
 - TC39: `AsyncContext` (Stage 2) standardizes context propagation, the store subscribers bind to. It does not define an event surface.
 - W3C: Trace Context and Baggage standardize wire headers, not in-process instrumentation.
 - No standards body has the channel surface on its work list, per TC55's current work items and public meeting notes as of October 2026.

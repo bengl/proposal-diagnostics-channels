@@ -1,8 +1,11 @@
 // Diagnostics channel compatibility probe.
 //
-// Pure module: no process, no network. Runs the same battery
-// everywhere Node's module surface is claimed, and returns the results.
-// Uses setTimeout once, to let deferred error surfacing happen.
+// Runs the same battery everywhere Node's module surface is claimed and
+// returns the results. No network. Two setTimeout uses: one to give
+// deferred error surfacing turns, one to bound a callback wait. An
+// optional process.on('uncaughtException') listener is guarded, since not
+// every runtime's process polyfill supports it.
+//
 // Entry points: cli.mjs (Node, Bun, Deno) and worker/index.mjs (Workers).
 
 import diagnostics_channel from 'node:diagnostics_channel';
@@ -49,24 +52,31 @@ export async function run() {
     const before = diagnostics_channel.hasSubscribers('p:basic');
     ch.publish({ v: 1 });
     const unsub = diagnostics_channel.unsubscribe('p:basic', fn);
+    // A second publish proves the unsubscription actually took effect.
+    ch.publish({ v: 2 });
     const after = diagnostics_channel.hasSubscribers('p:basic');
     rec('string-publish',
       before === true && seen.length === 1 && seen[0][0] && seen[0][0].v === 1
         && seen[0][1] === 'p:basic' && unsub === true && after === false,
-      'fired: ' + seen.length + ', unsub returns: ' + unsub + ', has after: ' + after);
+      'fired: ' + seen.length + ' (post-unsubscribe publish also fired: ' + (seen.length > 1)
+        + '), unsub returns: ' + unsub + ', has after: ' + after);
   });
 
   await guard('symbol-names', async () => {
     const s = Symbol('p:sym');
     const seen = [];
-    const fn = (m, n) => seen.push(n === s);
+    const fn = (m, n) => seen.push([m, n === s]);
     diagnostics_channel.subscribe(s, fn);
     const has = diagnostics_channel.hasSubscribers(s);
     const ch = diagnostics_channel.channel(s);
     ch.publish('x');
     diagnostics_channel.unsubscribe(s, fn);
-    rec('symbol-names', has === true && seen.length === 1,
-      'has: ' + has + ', fired: ' + seen.length + ', channel(): ' + typeof ch);
+    ch.publish('y');
+    rec('symbol-names',
+      has === true && seen.length === 1 && seen[0][1] === true,
+      'has: ' + has + ', fired: ' + seen.length + ' (post-unsubscribe publish also fired: '
+        + (seen.length > 1) + '), name is the supplied symbol: ' + seen[0][1]
+        + ', channel(): ' + typeof ch);
   });
 
   await guard('subscriber-order', async () => {
@@ -83,35 +93,50 @@ export async function run() {
   });
 
   await guard('subscriber-error', async () => {
-    const ch = diagnostics_channel.channel('p:err');
-    const hits = [];
-    const f1 = () => { throw new Error('boom'); };
-    const f2 = () => hits.push(2);
-    ch.subscribe(f1);
-    ch.subscribe(f2);
-    let syncThrow = false;
-    try {
-      ch.publish({});
-    } catch {
-      syncThrow = true;
-    }
-    const secondRan = hits.length > 0;
+    const make = (name) => {
+      const ch = diagnostics_channel.channel(name);
+      const hits = [];
+      const thrower = () => { throw new Error('boom'); };
+      const second = () => hits.push(2);
+      ch.subscribe(thrower);
+      ch.subscribe(second);
+      return { ch, hits, thrower, second };
+    };
+    // One subscriber error happens before any listener is registered, one
+    // after, so the probe observes both delivery cases.
+    const before = make('p:err-before');
+    const after = make('p:err-after');
 
-    // The error may not propagate to the publish caller. Give the loop a
-    // turn to surface it wherever this runtime puts it.
-    let deferred = null;
+    let syncThrowBefore = false;
+    try {
+      before.ch.publish({});
+    } catch {
+      syncThrowBefore = true;
+    }
+    const secondRanBefore = before.hits.length > 0;
+
+    const deferred = [];
     let handler = null;
     let listenerOk = false;
     const hasProcess = typeof process !== 'undefined' && typeof process.on === 'function';
     if (hasProcess) {
       try {
-        handler = (e) => { deferred = (e && e.message) || String(e); };
+        handler = (e) => { deferred.push((e && e.message) || String(e)); };
         process.on('uncaughtException', handler);
         listenerOk = true;
       } catch {
         handler = null;
       }
     }
+
+    let syncThrowAfter = false;
+    try {
+      after.ch.publish({});
+    } catch {
+      syncThrowAfter = true;
+    }
+    const secondRanAfter = after.hits.length > 0;
+
     for (let i = 0; i < 4; i++) {
       await new Promise((r) => setTimeout(r, 0));
     }
@@ -122,12 +147,18 @@ export async function run() {
         // leave it; the listener is a no-op from here on
       }
     }
-    ch.unsubscribe(f1);
-    ch.unsubscribe(f2);
+    for (const c of [before, after]) {
+      c.ch.unsubscribe(c.thrower);
+      c.ch.unsubscribe(c.second);
+    }
+
+    const threw = syncThrowBefore || syncThrowAfter;
+    const dispatched = secondRanBefore && secondRanAfter;
     rec('subscriber-error',
-      secondRan && !syncThrow,
-      'publish threw synchronously: ' + syncThrow + ', second subscriber ran: ' + secondRan
-        + ', deferred uncaught: ' + (deferred || 'not observed')
+      !threw && dispatched && listenerOk && deferred.length === 2,
+      'publish threw synchronously: before=' + syncThrowBefore + ' after=' + syncThrowAfter
+        + ', second subscriber ran: before=' + secondRanBefore + ' after=' + secondRanAfter
+        + ', deferred uncaught delivered: ' + JSON.stringify(deferred)
         + (hasProcess && !listenerOk ? ' (uncaughtException listener unsupported)' : ''));
   });
 
@@ -155,22 +186,30 @@ export async function run() {
     }
     const tc = diagnostics_channel.tracingChannel('p:tcp');
     const events = [];
+    const ctxs = [];
     const ctx = { a: 1 };
-    let ctxSeen = null;
     const handlers = {
-      start(c) { events.push('start'); ctxSeen = c; },
-      end(c) { events.push('end:' + (c.result && c.result.v)); },
-      asyncStart(c) { events.push('asyncStart'); },
-      asyncEnd(c) { events.push('asyncEnd'); },
-      error(c) { events.push('error'); },
+      start(c) { events.push('start'); ctxs.push(c); },
+      end(c) { events.push('end'); ctxs.push(c); },
+      asyncStart(c) { events.push('asyncStart'); ctxs.push(c); },
+      asyncEnd(c) { events.push('asyncEnd'); ctxs.push(c); },
+      error(c) { events.push('error'); ctxs.push(c); },
     };
     tc.subscribe(handlers);
     const out = await tc.tracePromise(async (x) => ({ v: x + 1 }), ctx, null, 41);
     tc.unsubscribe(handlers);
-    const allFired = ['start', 'asyncStart', 'asyncEnd'].every((e) => events.some((x) => x.startsWith(e)));
+    const sameCtx = ctxs.length === 4 && ctxs.every((c) => c === ctx);
+    const resultAtEnd = ctxs[1] && ctxs[1].result;
+    const resultAtAsyncEnd = ctxs[3] && ctxs[3].result;
     rec('trace-promise',
-      out && out.v === 42 && allFired && ctxSeen === ctx,
-      'events: ' + events.join(',') + ', ctx identity: ' + (ctxSeen === ctx) + ', out: ' + JSON.stringify(out));
+      out && out.v === 42
+        && events.join(',') === 'start,end,asyncStart,asyncEnd'
+        && sameCtx
+        && !!(resultAtAsyncEnd && resultAtAsyncEnd.v === 42),
+      'events: ' + events.join(',') + ', same ctx across events: ' + sameCtx
+        + ', ctx.result at end (type): ' + typeof resultAtEnd
+        + ', at asyncEnd: ' + (resultAtAsyncEnd && resultAtAsyncEnd.v)
+        + ', out: ' + JSON.stringify(out));
   });
 
   await guard('trace-promise-reject', async () => {
@@ -197,7 +236,7 @@ export async function run() {
     }
     tc.unsubscribe(handlers);
     rec('trace-promise-reject',
-      rejected && events.includes('error'),
+      rejected && events.includes('error') && errMsg === 'boom',
       'events: ' + events.join(',') + ', rejected: ' + rejected + ', ctx.error: ' + errMsg);
   });
 
@@ -208,22 +247,28 @@ export async function run() {
     }
     const tc = diagnostics_channel.tracingChannel('p:tcc');
     const events = [];
+    const ctxs = [];
+    const ctx = { tag: 'cb' };
     const handlers = {
-      start() { events.push('start'); },
-      end() { events.push('end'); },
-      asyncStart() { events.push('asyncStart'); },
-      asyncEnd() { events.push('asyncEnd'); },
-      error() { events.push('error'); },
+      start(c) { events.push('start'); ctxs.push(c); },
+      end(c) { events.push('end'); ctxs.push(c); },
+      asyncStart(c) { events.push('asyncStart'); ctxs.push(c); },
+      asyncEnd(c) { events.push('asyncEnd'); ctxs.push(c); },
+      error(c) { events.push('error'); ctxs.push(c); },
     };
     tc.subscribe(handlers);
+    // Bounded: a traceCallback that never fires the callback becomes a
+    // failed test, not a hung probe.
     await new Promise((resolve) => {
-      tc.traceCallback((a, cb) => { cb(null, a * 2); }, 1, { tag: 'cb' }, null, 21,
-        (err, res) => { events.push('cb:' + res); resolve(); });
+      const timer = setTimeout(() => { events.push('cb-timeout'); resolve(); }, 500);
+      tc.traceCallback((a, cb) => { cb(null, a * 2); }, 1, ctx, null, 21,
+        (err, res) => { clearTimeout(timer); events.push('cb:' + res); resolve(); });
     });
     tc.unsubscribe(handlers);
+    const sameCtx = ctxs.length === 4 && ctxs.every((c) => c === ctx);
     rec('trace-callback',
-      events.includes('cb:42') && events.includes('start'),
-      'events: ' + events.join(','));
+      events.join(',') === 'start,asyncStart,cb:42,asyncEnd,end' && sameCtx,
+      'events: ' + events.join(',') + ', same ctx across events: ' + sameCtx);
   });
 
   await guard('trace-sync', async () => {
@@ -233,12 +278,13 @@ export async function run() {
     }
     const tc = diagnostics_channel.tracingChannel('p:tcs');
     const events = [];
+    const ctxs = [];
     const handlers = {
-      start() { events.push('start'); },
-      end() { events.push('end'); },
-      asyncStart() { events.push('asyncStart'); },
-      asyncEnd() { events.push('asyncEnd'); },
-      error() { events.push('error'); },
+      start(c) { events.push('start'); ctxs.push(c); },
+      end(c) { events.push('end'); ctxs.push(c); },
+      asyncStart(c) { events.push('asyncStart'); ctxs.push(c); },
+      asyncEnd(c) { events.push('asyncEnd'); ctxs.push(c); },
+      error(c) { events.push('error'); ctxs.push(c); },
     };
     tc.subscribe(handlers);
     if (typeof tc.traceSync !== 'function') {
@@ -248,9 +294,10 @@ export async function run() {
     }
     const out = tc.traceSync(() => 7, { tag: 'sync' });
     tc.unsubscribe(handlers);
+    const sameCtx = ctxs.length === 2 && ctxs.every((c) => c && c.tag === 'sync');
     rec('trace-sync',
-      out === 7 && events.includes('start') && events.includes('end'),
-      'events: ' + events.join(',') + ', out: ' + out);
+      out === 7 && events.join(',') === 'start,end' && sameCtx,
+      'events: ' + events.join(',') + ', out: ' + out + ', same ctx across events: ' + sameCtx);
   });
 
   await guard('bind-store-runstores', async () => {
@@ -283,15 +330,17 @@ export async function run() {
     }
     const tc = diagnostics_channel.tracingChannel('p:tcs2');
     const als = new AsyncLocalStorage();
+    const outer = { tag: 'outer' };
     let startStore = null;
     let asyncStartStore = null;
+    let afterStore = null;
     if (typeof tc.start.bindStore !== 'function'
       || typeof tc.asyncStart.bindStore !== 'function') {
       rec('tracingchannel-restore', false, 'subchannel bindStore missing');
       return;
     }
-    tc.start.bindStore(als, (ctx) => { ctx.store = { tag: 'tc' }; return ctx.store; });
-    tc.asyncStart.bindStore(als, (ctx) => ctx.store);
+    tc.start.bindStore(als, (c) => { c.store = { tag: 'tc' }; return c.store; });
+    tc.asyncStart.bindStore(als, (c) => c.store);
     const handlers = {
       start() { const s = als.getStore(); startStore = s && s.tag; },
       asyncStart() { const s = als.getStore(); asyncStartStore = s && s.tag; },
@@ -300,11 +349,17 @@ export async function run() {
       error() {},
     };
     tc.subscribe(handlers);
-    await tc.tracePromise(async () => 1, {});
+    // The trace runs inside an outer store. If the trace leaks its store
+    // past completion, afterStore will not be the outer one.
+    await als.run(outer, async () => {
+      await tc.tracePromise(async () => 1, {});
+      afterStore = als.getStore();
+    });
     tc.unsubscribe(handlers);
     rec('tracingchannel-restore',
-      startStore === 'tc' && asyncStartStore === 'tc',
-      'start store: ' + startStore + ', asyncStart store: ' + asyncStartStore);
+      startStore === 'tc' && asyncStartStore === 'tc' && afterStore === outer,
+      'store inside start: ' + startStore + ', inside asyncStart: ' + asyncStartStore
+        + ', store after trace: ' + (afterStore && afterStore.tag));
   });
 
   return T;
